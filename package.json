@@ -1,0 +1,12 @@
+{
+  "name": "wdws-meme-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "API pembuat meme 'qoutes Windows' (wdws) — siap deploy ke Vercel",
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.53",
+    "axios": "^1.7.7",
+    "sharp": "^0.33.5"
+  }
+}
