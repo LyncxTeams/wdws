@@ -1,62 +1,45 @@
-# WDWS Meme API
+# WDWS + Fake GC + Fake TikTok Chat API
 
-API sederhana untuk generate meme "qoutes Windows" (wdws), siap deploy ke Vercel.
+Satu project Vercel dengan endpoint:
 
-## Struktur
+- `/api/wq`
+- `/api/fakegc`
+- `/api/faketiktok`
 
-```
-wdws-api/
-├── api/
-│   └── wq.js        # endpoint utama
-├── package.json
-├── vercel.json
-└── README.md
-```
+## Fake TikTok Chat
 
-## Cara pakai (endpoint)
+Proxy ke FazzCode `POST https://api.fazzcode.eu.cc/fakettchat`.
 
-```
-GET /api/wq?text=just friend kok manggil sayang dan cemburu
-```
+Image dapat diberikan sebagai URL dan akan otomatis di-download oleh Vercel lalu dikirim sebagai multipart `image`.
 
-Response: gambar PNG langsung (`Content-Type: image/png`).
+### GET
 
-Bisa juga lewat POST dengan body JSON:
-
-```
-POST /api/wq
-Content-Type: application/json
-
-{ "text": "halo dunia" }
+```text
+/api/faketiktok?username=Dika&chat=Apasih&image=https://example.com/foto.jpg
 ```
 
-## Deploy ke Vercel
+### POST JSON
 
-1. Push folder ini ke repo GitHub (atau GitLab/Bitbucket).
-2. Buka https://vercel.com/new, import repo tersebut.
-3. Vercel otomatis mendeteksi ini sebagai project Node.js — tidak perlu ubah setting build.
-4. Klik **Deploy**.
-
-Atau lewat CLI:
-
-```bash
-npm i -g vercel
-cd wdws-api
-vercel --prod
+```json
+{
+  "username": "Dika",
+  "chat": "Apasih",
+  "image": "https://example.com/foto.jpg"
+}
 ```
 
-## Catatan teknis
+Jika FazzCode mengembalikan PNG/JPG/WebP, endpoint ini meneruskan hasilnya langsung sebagai gambar.
 
-- Cache font & background disimpan di `/tmp` (satu-satunya folder yang bisa ditulis di Vercel serverless). Cache ini bersifat sementara — akan hilang saat instance function di-recycle, lalu otomatis di-download ulang.
-- `@napi-rs/canvas` dan `sharp` sudah pakai binary prebuilt untuk Linux x64, jadi tidak perlu setup tambahan di Vercel.
-- Batas panjang teks di-set 300 karakter (bisa diubah di `api/wq.js`).
-- Jika ingin memakai runtime Edge, JANGAN — canvas & sharp butuh Node.js runtime (native binding), bukan Edge runtime.
+API key membaca `FAZZCODE_API_KEY`. Project juga memiliki fallback test key agar tidak langsung gagal ketika Environment Variable belum dibuat. Untuk production, tetap disarankan mengisi `FAZZCODE_API_KEY` di Vercel dan menghapus fallback key dari source.
 
-## Testing lokal
+## Fake GC
 
-```bash
-npm install
-npx vercel dev
+```text
+/api/fakegc?name=RIN%20MD%20OFFICIAL&members=2%20anggota&image=https://example.com/avatar.jpg
 ```
 
-Lalu buka: `http://localhost:3000/api/wq?text=coba+dulu`
+## WDWS
+
+```text
+/api/wq?text=halo%20dunia
+```

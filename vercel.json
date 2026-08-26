@@ -1,5 +1,13 @@
 {
   "functions": {
+    "api/fakegc.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "api/faketiktok.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
     "api/wq.js": {
       "memory": 1024,
       "maxDuration": 30
