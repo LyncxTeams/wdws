@@ -11,6 +11,14 @@
     "api/wq.js": {
       "memory": 1024,
       "maxDuration": 30
+    },
+    "api/fakeml.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "api/fakeff.js": {
+      "memory": 1024,
+      "maxDuration": 30
     }
   }
 }
