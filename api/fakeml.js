@@ -67,7 +67,21 @@ export default async function handler(req, res) {
     }
 
     const generateCard = await loadGenerator()
-    const result = await generateCard({ avatar, username, rank, border })
+
+    // fake-ml bikin folder cache pakai path relatif ("fake-ml/"), sedangkan
+    // di Vercel cuma /tmp yang writable. Pindah cwd dulu biar folder relatif
+    // itu kebuat di /tmp/fake-ml, bukan di root project yang read-only.
+    const prevCwd = process.cwd()
+    try {
+      process.chdir('/tmp')
+    } catch {}
+
+    let result
+    try {
+      result = await generateCard({ avatar, username, rank, border })
+    } finally {
+      try { process.chdir(prevCwd) } catch {}
+    }
 
     const buffer = extractBuffer(result)
     if (!buffer) {
