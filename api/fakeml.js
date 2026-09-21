@@ -1,5 +1,9 @@
+import fs from 'fs/promises'
+import path from 'path'
+
 const RANKS = ['epic', 'glory', 'gm', 'honor', 'imo', 'legend', 'mawi']
 const FALLBACK_AVATAR = 'https://raw.githubusercontent.com/Ditzzx-vibecoder/Assets/main/Image/artworks-gWLRE6HyPH3DgVMG-ZFFxtg-t500x500.jpg'
+const TMP_DIR = '/tmp'
 
 const randomItem = (arr) => arr[Math.floor(Math.random() * arr.length)]
 const randomBorder = () => Math.floor(Math.random() * 16) + 1
@@ -24,13 +28,81 @@ async function getInput(req) {
   return body
 }
 
-// Mendukung dua bentuk hasil fake-ml: buffer langsung, atau { data: { image } }
-function extractBuffer(result) {
-  if (!result) return null
-  if (Buffer.isBuffer(result)) return result
-  const image = result.data?.image ?? result.image
-  if (!image) return null
-  return Buffer.isBuffer(image) ? image : Buffer.from(image)
+// Bentuk hasil fake-ml tidak konsisten dengan dokumentasinya, jadi cari secara
+// rekursif ke seluruh struktur `result`: bisa buffer, data:URI base64, URL,
+// atau path file di disk.
+function findImageResult(value, depth = 0) {
+  if (depth > 6 || value == null) return null
+
+  if (Buffer.isBuffer(value)) return { type: 'buffer', value }
+
+  if (value instanceof Uint8Array) return { type: 'buffer', value: Buffer.from(value) }
+
+  if (typeof value === 'string') {
+    const s = value.trim()
+    if (!s) return null
+
+    const dataMatch = s.match(/^data:image\/[^;]+;base64,(.+)$/is)
+    if (dataMatch) return { type: 'buffer', value: Buffer.from(dataMatch[1], 'base64') }
+
+    if (/^https?:\/\//i.test(s)) return { type: 'url', value: s }
+
+    if (/\.(png|jpe?g|webp|gif)$/i.test(s)) return { type: 'path', value: s }
+
+    return null
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findImageResult(item, depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+
+  if (typeof value === 'object') {
+    const preferred = ['image', 'buffer', 'file', 'path', 'output', 'result', 'data', 'url']
+    for (const key of preferred) {
+      if (key in value) {
+        const found = findImageResult(value[key], depth + 1)
+        if (found) return found
+      }
+    }
+    for (const key of Object.keys(value)) {
+      if (!preferred.includes(key)) {
+        const found = findImageResult(value[key], depth + 1)
+        if (found) return found
+      }
+    }
+  }
+
+  return null
+}
+
+async function resolveBuffer(found) {
+  if (!found) return null
+
+  if (found.type === 'buffer') return found.value
+
+  if (found.type === 'url') {
+    const r = await fetch(found.value)
+    if (!r.ok) throw new Error(`Gagal mengambil gambar hasil (${r.status})`)
+    return Buffer.from(await r.arrayBuffer())
+  }
+
+  if (found.type === 'path') {
+    // Path yang dikembalikan package biasanya relatif terhadap cwd saat
+    // generate berlangsung (yang sudah kita arahkan ke /tmp).
+    const resolved = path.isAbsolute(found.value)
+      ? found.value
+      : path.resolve(TMP_DIR, found.value.replace(/^\.[\\/]/, ''))
+
+    const buffer = await fs.readFile(resolved)
+    fs.unlink(resolved).catch(() => {})
+    return buffer
+  }
+
+  return null
 }
 
 export default async function handler(req, res) {
@@ -71,20 +143,17 @@ export default async function handler(req, res) {
     // fake-ml bikin folder cache pakai path relatif ("fake-ml/"), sedangkan
     // di Vercel cuma /tmp yang writable. Pindah cwd dulu biar folder relatif
     // itu kebuat di /tmp/fake-ml, bukan di root project yang read-only.
-    const prevCwd = process.cwd()
-    try {
-      process.chdir('/tmp')
-    } catch {}
+    // Sengaja TIDAK di-restore sebelum baca file hasil, karena path relatif
+    // yang dikembalikan package masih perlu di-resolve terhadap /tmp ini.
+    try { process.chdir(TMP_DIR) } catch {}
 
-    let result
-    try {
-      result = await generateCard({ avatar, username, rank, border })
-    } finally {
-      try { process.chdir(prevCwd) } catch {}
-    }
+    const result = await generateCard({ avatar, username, rank, border })
 
-    const buffer = extractBuffer(result)
+    const found = findImageResult(result)
+    const buffer = await resolveBuffer(found)
+
     if (!buffer) {
+      console.error('FAKEML unrecognized result shape:', JSON.stringify(result)?.slice(0, 2000))
       throw new Error('Fake ML gagal menghasilkan gambar (format hasil tidak dikenali)')
     }
 
