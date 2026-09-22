@@ -19,6 +19,10 @@
     "api/fakeff.js": {
       "memory": 1024,
       "maxDuration": 30
+    },
+    "api/gpt5.js": {
+      "memory": 1024,
+      "maxDuration": 30
     }
   }
 }
