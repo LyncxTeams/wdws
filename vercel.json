@@ -20,7 +20,11 @@
       "memory": 1024,
       "maxDuration": 30
     },
-    "api/gpt5.js": {
+    "api/cylicdev.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "api/antinsfw.js": {
       "memory": 1024,
       "maxDuration": 30
     }
