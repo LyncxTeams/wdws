@@ -51,24 +51,24 @@ Proxy ke Gemini, mengembalikan balasan sebagai JSON `{ status, result }`.
 ### GET
 
 ```text
-/api/cylicdev?text=Ini%20gambar%20apa%3F&image=https://example.com/foto.jpg&system=Kamu%20adalah%20asisten%20ramah
+/api/cylicdev?text=Kamu%20siapa&system=Kamu%20adalah%20asisten%20ramah&apikey=API_KEY_KAMU
 ```
 
 ### POST JSON
 
 ```json
 {
-  "text": "Ini gambar apa?",
+  "text": "Kamu siapa",
+  "system": "Kamu adalah asisten ramah",
   "image": "https://example.com/foto.jpg",
-  "system": "Kamu adalah asisten ramah"
+  "apikey": "API_KEY_KAMU"
 }
 ```
 
 - `text` — opsional jika `image` diisi, tapi salah satu wajib ada.
 - `image` — opsional, URL http/https atau data URI base64 (`data:image/...;base64,...`), maks 8MB. AI akan menganalisa gambar ini.
 - `system` — opsional, default-nya "Kamu adalah CylicDev AI. Developer: FuadXyro."
-
-API key membaca `GEMINI_API_KEY`.
+- `apikey` — wajib. Gemini API key kamu. Kalau kosong, request ditolak dengan pesan "apikey belum diisi."
 
 ## AntiNSFW
 
@@ -77,18 +77,20 @@ Deteksi konten NSFW pada gambar pakai Gemini (multimodal) — Gemini menganalisa
 ### GET
 
 ```text
-/api/antinsfw?image=https://example.com/foto.jpg
+/api/antinsfw?image=https://example.com/foto.jpg&apikey=API_KEY_KAMU
 ```
 
 ### POST JSON
 
 ```json
 {
-  "image": "https://example.com/foto.jpg"
+  "image": "https://example.com/foto.jpg",
+  "apikey": "API_KEY_KAMU"
 }
 ```
 
 - `image` — wajib, URL http/https atau data URI base64 (maks 8MB).
+- `apikey` — wajib. Gemini API key kamu. Kalau kosong, request ditolak dengan pesan "apikey belum diisi."
 
 Respons:
 
@@ -101,4 +103,4 @@ Respons:
 }
 ```
 
-`category` bisa `safe`, `adult`, `racy`, `violence`, atau `other`. API key membaca `GEMINI_API_KEY` (fallback ke test key sama seperti `/api/cylicdev`, disarankan diganti untuk production). Project juga memiliki fallback test key agar tidak langsung gagal ketika Environment Variable belum dibuat. Untuk production, tetap disarankan mengisi `GEMINI_API_KEY` di Vercel dan menghapus fallback key dari source.
+`category` bisa `safe`, `adult`, `racy`, `violence`, atau `other`.

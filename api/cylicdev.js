@@ -1,7 +1,6 @@
 // CylicDev AI proxy — meneruskan teks (dan opsional gambar) ke Gemini lalu
 // mengembalikan balasannya sebagai JSON.
-const DEFAULT_API_KEY = 'AQ.Ab8RN6IQZJvZPTCP5rRYDWsuYUcxBu8sDZ35yvEj4ThN3J_d4A'
-const API_KEY = process.env.GEMINI_API_KEY || DEFAULT_API_KEY
+// (tidak ada fallback ke Environment Variable — apikey wajib dikirim di request)
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1/interactions'
 const MODEL = 'gemini-3.6-flash'
 const DEFAULT_SYSTEM_INSTRUCTION = 'Kamu adalah CylicDev AI. Developer: FuadXyro.'
@@ -73,6 +72,16 @@ export default async function handler(req, res) {
 
   try {
     const input = await getInput(req)
+    const apiKey = String(input.apikey || input.api_key || '').trim()
+
+    if (!apiKey) {
+      return res.status(400).json({
+        status: false,
+        message: 'apikey belum diisi.',
+        example: '/api/cylicdev?text=Kamu siapa&apikey=API_KEY_KAMU'
+      })
+    }
+
     const text = String(input.text || input.q || input.message || '').trim()
     const imageParam = input.image || input.img || input.photo || ''
 
@@ -121,7 +130,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Goog-Api-Key': API_KEY
+        'X-Goog-Api-Key': apiKey
       },
       body: JSON.stringify(requestBody)
     })

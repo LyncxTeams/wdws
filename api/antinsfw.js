@@ -1,8 +1,7 @@
 // Deteksi konten NSFW pada gambar menggunakan Gemini (multimodal), bukan
 // Cloud Vision. Gemini diminta menganalisa gambar lalu balas dalam format
 // JSON ketat yang kemudian kita parse di sini.
-const DEFAULT_API_KEY = 'AQ.Ab8RN6IQZJvZPTCP5rRYDWsuYUcxBu8sDZ35yvEj4ThN3J_d4A'
-const API_KEY = process.env.GEMINI_API_KEY || DEFAULT_API_KEY
+// (tidak ada fallback ke Environment Variable — apikey wajib dikirim di request)
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1/interactions'
 const MODEL = 'gemini-3.6-flash'
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024 // 8MB
@@ -89,6 +88,16 @@ export default async function handler(req, res) {
 
   try {
     const input = await getInput(req)
+    const apiKey = String(input.apikey || input.api_key || '').trim()
+
+    if (!apiKey) {
+      return res.status(400).json({
+        status: false,
+        message: 'apikey belum diisi.',
+        example: '/api/antinsfw?image=https://example.com/foto.jpg&apikey=API_KEY_KAMU'
+      })
+    }
+
     const imageParam = input.image || input.img || input.url || ''
 
     if (!imageParam) {
@@ -110,7 +119,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Goog-Api-Key': API_KEY
+        'X-Goog-Api-Key': apiKey
       },
       body: JSON.stringify({
         model: MODEL,
