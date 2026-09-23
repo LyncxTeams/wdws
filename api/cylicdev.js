@@ -5,6 +5,15 @@ const ENDPOINT = 'https://generativelanguage.googleapis.com/v1/interactions'
 const MODEL = 'gemini-3.6-flash'
 const DEFAULT_SYSTEM_INSTRUCTION = 'Kamu adalah CylicDev AI. Developer: FuadXyro.'
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024 // 8MB, sebelum di-encode base64
+const MAX_HISTORY_TURNS = 10 // jumlah pasangan user+AI yang disimpan per sesi
+
+// Penyimpanan sesi in-memory, key = id. CATATAN: ini cuma bertahan selama
+// instance serverless-nya masih "hangat" (warm) — bisa hilang kapan saja
+// kalau Vercel spin up instance baru / cold start, dan TIDAK dijamin sama
+// antar-request kalau trafiknya dipecah ke beberapa instance sekaligus.
+// Untuk persistensi yang beneran reliable, ganti Map ini dengan Vercel KV
+// atau Upstash Redis.
+const sessions = globalThis.__cylicdevSessions || (globalThis.__cylicdevSessions = new Map())
 
 async function getInput(req) {
   if (req.method === 'GET') return req.query || {}
@@ -112,6 +121,18 @@ export default async function handler(req, res) {
       }
     }
 
+    const id = String(input.id || '').trim()
+    const history = id ? sessions.get(id) || [] : []
+
+    // Gabungkan histori sesi jadi transkrip sebelum pertanyaan baru, biar
+    // AI "ingat" percakapan sebelumnya. Skema upstream cuma terima satu
+    // string/array untuk "input", jadi histori digabung jadi teks.
+    const transcript = history
+      .map((turn) => `User: ${turn.user}\nAI: ${turn.ai}`)
+      .join('\n\n')
+
+    const promptText = transcript ? `${transcript}\n\nUser: ${text}` : text
+
     // Catatan: skema multimodal endpoint ini menyesuaikan kontrak upstream
     // (bukan REST resmi Google). Jika upstream mengharapkan nama field lain
     // untuk gambar, sesuaikan bagian "input" di bawah ini.
@@ -120,10 +141,10 @@ export default async function handler(req, res) {
       system_instruction: systemInstruction,
       input: image
         ? [
-            ...(text ? [{ type: 'text', text }] : []),
+            ...(promptText ? [{ type: 'text', text: promptText }] : []),
             { type: 'image', image: { mime_type: image.mimeType, data: image.data } }
           ]
-        : text
+        : promptText
     }
 
     const upstream = await fetch(ENDPOINT, {
@@ -145,6 +166,11 @@ export default async function handler(req, res) {
     if (!result) {
       console.error('CYLICDEV unrecognized result shape:', JSON.stringify(data)?.slice(0, 2000))
       throw new Error('Gagal mengekstrak balasan dari upstream (format hasil tidak dikenali)')
+    }
+
+    if (id) {
+      const updated = [...history, { user: text || '[gambar]', ai: result }].slice(-MAX_HISTORY_TURNS)
+      sessions.set(id, updated)
     }
 
     res.setHeader('Cache-Control', 'no-store')

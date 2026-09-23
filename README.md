@@ -51,7 +51,7 @@ Proxy ke Gemini, mengembalikan balasan sebagai JSON `{ status, result }`.
 ### GET
 
 ```text
-/api/cylicdev?text=Kamu%20siapa&system=Kamu%20adalah%20asisten%20ramah&apikey=API_KEY_KAMU
+/api/cylicdev?text=Kamu%20siapa&system=Kamu%20adalah%20asisten%20ramah&apikey=API_KEY_KAMU&id=user123
 ```
 
 ### POST JSON
@@ -61,7 +61,8 @@ Proxy ke Gemini, mengembalikan balasan sebagai JSON `{ status, result }`.
   "text": "Kamu siapa",
   "system": "Kamu adalah asisten ramah",
   "image": "https://example.com/foto.jpg",
-  "apikey": "API_KEY_KAMU"
+  "apikey": "API_KEY_KAMU",
+  "id": "user123"
 }
 ```
 
@@ -69,6 +70,9 @@ Proxy ke Gemini, mengembalikan balasan sebagai JSON `{ status, result }`.
 - `image` — opsional, URL http/https atau data URI base64 (`data:image/...;base64,...`), maks 8MB. AI akan menganalisa gambar ini.
 - `system` — opsional, default-nya "Kamu adalah CylicDev AI. Developer: FuadXyro."
 - `apikey` — wajib. Gemini API key kamu. Kalau kosong, request ditolak dengan pesan "apikey belum diisi."
+- `id` — opsional. Kalau diisi (misal nomor WA atau user id), 10 percakapan terakhir dengan id yang sama otomatis dibaca ulang jadi konteks, jadi AI "inget" obrolan sebelumnya. Beda `id` = beda sesi/tidak nyambung.
+
+⚠️ Histori sesi (`id`) disimpan **in-memory** di server, bukan di database. Artinya bisa hilang kapan saja kalau Vercel me-restart/cold-start function-nya, dan tidak dijamin konsisten kalau trafik dipecah ke banyak instance sekaligus. Cocok buat obrolan santai/testing; kalau butuh histori yang beneran permanen & reliable (misal buat bot produksi), bilang aja — bisa diganti pakai Vercel KV atau Upstash Redis.
 
 ## AntiNSFW
 
