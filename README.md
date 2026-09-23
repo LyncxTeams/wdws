@@ -68,7 +68,7 @@ Proxy ke Gemini, mengembalikan balasan sebagai JSON `{ status, result }`.
 - `image` — opsional, URL http/https atau data URI base64 (`data:image/...;base64,...`), maks 8MB. AI akan menganalisa gambar ini.
 - `system` — opsional, default-nya "Kamu adalah CylicDev AI. Developer: FuadXyro."
 
-API key membaca `GEMINI_API_KEY`.
+API key membaca `GEMINI_API_KEY` — wajib di-set di Environment Variable Vercel (tidak ada fallback key di source, supaya tidak kena blokir GitHub Push Protection / secret scanning).
 
 ## AntiNSFW
 
@@ -101,4 +101,4 @@ Respons:
 }
 ```
 
-`category` bisa `safe`, `adult`, `racy`, `violence`, atau `other`. API key membaca `GEMINI_API_KEY` (fallback ke test key sama seperti `/api/cylicdev`, disarankan diganti untuk production). Project juga memiliki fallback test key agar tidak langsung gagal ketika Environment Variable belum dibuat. Untuk production, tetap disarankan mengisi `GEMINI_API_KEY` di Vercel dan menghapus fallback key dari source.
+`category` bisa `safe`, `adult`, `racy`, `violence`, atau `other`. Pakai `GEMINI_API_KEY` yang sama dengan `/api/cylicdev` — wajib di-set di Environment Variable, tidak ada fallback key di source.
