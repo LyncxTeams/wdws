@@ -40,13 +40,17 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body) } catch { body = {} }
   }
   const params = { ...(req.query || {}), ...(body || {}) }
-  const rawQuery = String(req.url || '').split('?')[1] || ''
+  const requestUrl = String(req.url || req.originalUrl || '')
   let directInput = ''
-  if (rawQuery.startsWith('=')) {
-    const rawValue = rawQuery.slice(1).split('&')[0]
-    try { directInput = decodeURIComponent(rawValue.replace(/\+/g, '%20')).trim() } catch { directInput = rawValue.trim() }
+  const rawMatch = requestUrl.match(/[?&]=([^&]*)/)
+  if (rawMatch) {
+    try { directInput = decodeURIComponent(rawMatch[1].replace(/\+/g, '%20')).trim() } catch { directInput = rawMatch[1].trim() }
   }
   if (!directInput && params[''] != null) directInput = String(Array.isArray(params['']) ? params[''][0] : params['']).trim()
+  if (!directInput) {
+    const oddKey = Object.keys(params).find(key => key && !['q', 'keyword', 'search', 'url', 'link'].includes(key.toLowerCase()) && (params[key] === '' || params[key] == null))
+    if (oddKey) directInput = oddKey.trim()
+  }
   const inputUrl = String(directInput || params.url || params.link || '').trim()
   const keyword = String(directInput || params.q || params.keyword || params.search || '').trim()
   const code = getCode(inputUrl)
@@ -71,6 +75,7 @@ export default async function handler(req, res) {
       if (!stickers.length) return send(res, 404, { success: false, message: 'Pack tidak ditemukan atau tidak memiliki stiker.' })
       return send(res, 200, {
         success: true,
+        creator: 'FuadXyro',
         mode: 'pack',
         pack: {
           name: pack.name || null,
@@ -85,9 +90,10 @@ export default async function handler(req, res) {
 
     if (!keyword) return send(res, 400, {
       success: false,
-      message: 'Masukkan kata kunci atau URL pack langsung setelah ?=.',
+      message: 'Input ?= tidak terbaca. Coba /api/stickerly?=naruto atau /api/stickerly?q=naruto.',
       examples: {
         search: '/api/stickerly?=naruto',
+        fallbackSearch: '/api/stickerly?q=naruto',
         pack: '/api/stickerly?=https%3A%2F%2Fsticker.ly%2Fs%2FJ3ELW0'
       }
     })
@@ -103,7 +109,7 @@ export default async function handler(req, res) {
     const result = json?.result
     const packs = Array.isArray(result) ? result : result?.packs || result?.stickerPacks || result?.data || result?.items || []
     const results = packs.map(normalizePack)
-    return send(res, 200, { success: true, mode: 'search', keyword, total: results.length, results })
+    return send(res, 200, { success: true, creator: 'FuadXyro', mode: 'search', keyword, total: results.length, results })
   } catch (error) {
     return send(res, 500, { success: false, message: 'Terjadi kesalahan saat menghubungi Sticker.ly.', detail: error?.name === 'TimeoutError' ? 'Request timeout.' : error.message })
   }
