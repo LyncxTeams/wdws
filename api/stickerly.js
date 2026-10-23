@@ -1,0 +1,110 @@
+const BASE_URL = 'https://api.sticker.ly/v4'
+const HEADERS = {
+  'user-agent': 'androidapp.stickerly/3.17.0',
+  'content-type': 'application/json'
+}
+
+function send(res, status, body) {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-store')
+  return res.end(JSON.stringify(body, null, 2))
+}
+
+function getCode(value) {
+  const input = String(value || '').trim()
+  const match = input.match(/(?:sticker\.ly\/s\/|^)([A-Za-z0-9_-]{4,})(?:[/?#].*)?$/i)
+  return match?.[1] || null
+}
+
+function normalizePack(pack) {
+  const code = pack.shareCode || getCode(pack.shareUrl || pack.url || '')
+  return {
+    name: pack.name || null,
+    author: pack.user?.displayName || pack.user?.name || pack.authorName || null,
+    total: pack.stickerCount ?? pack.stickers?.length ?? null,
+    shareCode: code,
+    url: code ? `https://sticker.ly/s/${code}` : pack.shareUrl || pack.url || null,
+    cover: pack.resourceUrlPrefix && pack.stickers?.[0]?.fileName ? pack.resourceUrlPrefix + pack.stickers[0].fileName : pack.cover || pack.thumbnail || null
+  }
+}
+
+export default async function handler(req, res) {
+  if (!['GET', 'POST'].includes(req.method)) {
+    res.setHeader('Allow', 'GET, POST')
+    return send(res, 405, { success: false, message: 'Gunakan method GET atau POST.' })
+  }
+
+  let body = req.body || {}
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body) } catch { body = {} }
+  }
+  const params = { ...(req.query || {}), ...(body || {}) }
+  const rawQuery = String(req.url || '').split('?')[1] || ''
+  let directInput = ''
+  if (rawQuery.startsWith('=')) {
+    const rawValue = rawQuery.slice(1).split('&')[0]
+    try { directInput = decodeURIComponent(rawValue.replace(/\+/g, '%20')).trim() } catch { directInput = rawValue.trim() }
+  }
+  if (!directInput && params[''] != null) directInput = String(Array.isArray(params['']) ? params[''][0] : params['']).trim()
+  const inputUrl = String(directInput || params.url || params.link || '').trim()
+  const keyword = String(directInput || params.q || params.keyword || params.search || '').trim()
+  const code = getCode(inputUrl)
+
+  try {
+    if (code) {
+      const response = await fetch(`${BASE_URL}/stickerPack/${encodeURIComponent(code)}?needRelation=true`, {
+        headers: HEADERS,
+        signal: AbortSignal.timeout(25000)
+      })
+      const json = await response.json()
+      if (!response.ok) return send(res, response.status, { success: false, message: 'Sticker.ly gagal mengambil pack.', detail: json?.message || null })
+      const pack = json?.result || {}
+      const prefix = pack.resourceUrlPrefix || ''
+      const stickers = (pack.stickers || []).map((sticker, index) => ({
+        number: index + 1,
+        fileName: sticker.fileName || null,
+        url: sticker.fileName ? prefix + sticker.fileName : null,
+        animated: Boolean(sticker.isAnimated || sticker.animated),
+        tags: sticker.tags || []
+      }))
+      if (!stickers.length) return send(res, 404, { success: false, message: 'Pack tidak ditemukan atau tidak memiliki stiker.' })
+      return send(res, 200, {
+        success: true,
+        mode: 'pack',
+        pack: {
+          name: pack.name || null,
+          author: pack.user?.displayName || pack.user?.name || pack.authorName || null,
+          url: `https://sticker.ly/s/${code}`,
+          total: stickers.length,
+          cover: stickers[0]?.url || null
+        },
+        stickers
+      })
+    }
+
+    if (!keyword) return send(res, 400, {
+      success: false,
+      message: 'Masukkan kata kunci atau URL pack langsung setelah ?=.',
+      examples: {
+        search: '/api/stickerly?=naruto',
+        pack: '/api/stickerly?=https%3A%2F%2Fsticker.ly%2Fs%2FJ3ELW0'
+      }
+    })
+
+    const response = await fetch(`${BASE_URL}/stickerPack/smartSearch`, {
+      method: 'POST',
+      headers: HEADERS,
+      body: JSON.stringify({ keyword, cursor: 0, page: 1, limit: 20, searchType: 'ALL' }),
+      signal: AbortSignal.timeout(25000)
+    })
+    const json = await response.json()
+    if (!response.ok) return send(res, response.status, { success: false, message: 'Pencarian Sticker.ly gagal.', detail: json?.message || null })
+    const result = json?.result
+    const packs = Array.isArray(result) ? result : result?.packs || result?.stickerPacks || result?.data || result?.items || []
+    const results = packs.map(normalizePack)
+    return send(res, 200, { success: true, mode: 'search', keyword, total: results.length, results })
+  } catch (error) {
+    return send(res, 500, { success: false, message: 'Terjadi kesalahan saat menghubungi Sticker.ly.', detail: error?.name === 'TimeoutError' ? 'Request timeout.' : error.message })
+  }
+}

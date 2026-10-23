@@ -108,3 +108,21 @@ Respons:
 ```
 
 `category` bisa `safe`, `adult`, `racy`, `violence`, atau `other`.
+
+## Sticker.ly API
+
+Satu format URL untuk pencarian dan mengambil pack. Nilai diletakkan langsung setelah `?=`:
+
+Cari berdasarkan kata kunci:
+
+```text
+/api/stickerly?=naruto
+```
+
+Ambil pack dari tautan Sticker.ly (URL di-encode agar aman):
+
+```text
+/api/stickerly?=https%3A%2F%2Fsticker.ly%2Fs%2FJ3ELW0
+```
+
+Endpoint juga tetap mendukung parameter `q`, `keyword`, `url`, dan `link` untuk kompatibilitas. Respons berbentuk JSON berisi metadata pack dan URL tiap stiker.

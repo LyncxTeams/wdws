@@ -27,6 +27,10 @@
     "api/antinsfw.js": {
       "memory": 1024,
       "maxDuration": 30
+    },
+    "api/stickerly.js": {
+      "memory": 1024,
+      "maxDuration": 30
     }
   }
 }
