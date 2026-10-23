@@ -17,6 +17,33 @@ function getCode(value) {
   return match?.[1] || null
 }
 
+async function readUpstream(response) {
+  const raw = await response.text()
+  if (!raw || !raw.trim()) {
+    return { ok: false, json: null, detail: `Sticker.ly mengembalikan respons kosong (HTTP ${response.status}).` }
+  }
+  try {
+    return { ok: true, json: JSON.parse(raw), detail: null }
+  } catch {
+    return { ok: false, json: null, detail: `Respons Sticker.ly bukan JSON yang valid (HTTP ${response.status}): ${raw.slice(0, 180)}` }
+  }
+}
+
+async function fetchStickerly(url, options = {}) {
+  let lastError = null
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(url, { ...options, signal: AbortSignal.timeout(25000) })
+      const parsed = await readUpstream(response)
+      if (parsed.ok) return { response, json: parsed.json, parseError: null }
+      lastError = { response, parseError: parsed.detail }
+    } catch (error) {
+      lastError = { response: null, parseError: error?.name === 'TimeoutError' ? 'Request ke Sticker.ly timeout.' : error.message }
+    }
+  }
+  return { response: lastError?.response || null, json: null, parseError: lastError?.parseError || 'Sticker.ly tidak memberikan respons yang valid.' }
+}
+
 function normalizePack(pack) {
   const code = pack.shareCode || getCode(pack.shareUrl || pack.url || '')
   return {
@@ -57,12 +84,11 @@ export default async function handler(req, res) {
 
   try {
     if (code) {
-      const response = await fetch(`${BASE_URL}/stickerPack/${encodeURIComponent(code)}?needRelation=true`, {
-        headers: HEADERS,
-        signal: AbortSignal.timeout(25000)
-      })
-      const json = await response.json()
-      if (!response.ok) return send(res, response.status, { success: false, message: 'Sticker.ly gagal mengambil pack.', detail: json?.message || null })
+      const upstream = await fetchStickerly(`${BASE_URL}/stickerPack/${encodeURIComponent(code)}?needRelation=true`, { headers: HEADERS })
+      if (!upstream.json) return send(res, 502, { success: false, creator: 'FuadXyro', message: 'Sticker.ly gagal mengembalikan data pack yang valid.', detail: upstream.parseError })
+      const response = upstream.response
+      const json = upstream.json
+      if (!response.ok) return send(res, response.status, { success: false, creator: 'FuadXyro', message: 'Sticker.ly gagal mengambil pack.', detail: json?.message || null })
       const pack = json?.result || {}
       const prefix = pack.resourceUrlPrefix || ''
       const stickers = (pack.stickers || []).map((sticker, index) => ({
@@ -98,19 +124,20 @@ export default async function handler(req, res) {
       }
     })
 
-    const response = await fetch(`${BASE_URL}/stickerPack/smartSearch`, {
+    const upstream = await fetchStickerly(`${BASE_URL}/stickerPack/smartSearch`, {
       method: 'POST',
       headers: HEADERS,
-      body: JSON.stringify({ keyword, cursor: 0, page: 1, limit: 20, searchType: 'ALL' }),
-      signal: AbortSignal.timeout(25000)
+      body: JSON.stringify({ keyword, cursor: 0, page: 1, limit: 20, searchType: 'ALL' })
     })
-    const json = await response.json()
-    if (!response.ok) return send(res, response.status, { success: false, message: 'Pencarian Sticker.ly gagal.', detail: json?.message || null })
+    if (!upstream.json) return send(res, 502, { success: false, creator: 'FuadXyro', message: 'Pencarian Sticker.ly gagal mengembalikan data yang valid.', detail: upstream.parseError })
+    const response = upstream.response
+    const json = upstream.json
+    if (!response.ok) return send(res, response.status, { success: false, creator: 'FuadXyro', message: 'Pencarian Sticker.ly gagal.', detail: json?.message || null })
     const result = json?.result
     const packs = Array.isArray(result) ? result : result?.packs || result?.stickerPacks || result?.data || result?.items || []
     const results = packs.map(normalizePack)
     return send(res, 200, { success: true, creator: 'FuadXyro', mode: 'search', keyword, total: results.length, results })
   } catch (error) {
-    return send(res, 500, { success: false, message: 'Terjadi kesalahan saat menghubungi Sticker.ly.', detail: error?.name === 'TimeoutError' ? 'Request timeout.' : error.message })
+    return send(res, 500, { success: false, creator: 'FuadXyro', message: 'Terjadi kesalahan saat menghubungi Sticker.ly.', detail: error?.name === 'TimeoutError' ? 'Request timeout.' : error.message })
   }
 }
