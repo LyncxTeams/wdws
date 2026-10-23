@@ -1,3 +1,5 @@
+import axios from 'axios'
+
 const BASE_URL = 'https://api.sticker.ly/v4'
 const HEADERS = {
   'user-agent': 'androidapp.stickerly/3.17.0',
@@ -13,53 +15,50 @@ function send(res, status, body) {
 
 function getCode(value) {
   const input = String(value || '').trim()
-  const match = input.match(/(?:sticker\.ly\/s\/|^)([A-Za-z0-9_-]{4,})(?:[/?#].*)?$/i)
+  const match = input.match(/https?:\/\/(?:www\.)?sticker\.ly\/s\/([A-Za-z0-9_-]+)/i)
   return match?.[1] || null
 }
 
-async function readUpstream(response) {
-  const raw = await response.text()
-  if (!raw || !raw.trim()) {
-    return { ok: false, json: null, detail: `Sticker.ly mengembalikan respons kosong (HTTP ${response.status}).` }
-  }
-  try {
-    return { ok: true, json: JSON.parse(raw), detail: null }
-  } catch {
-    return { ok: false, json: null, detail: `Respons Sticker.ly bukan JSON yang valid (HTTP ${response.status}): ${raw.slice(0, 180)}` }
+function normalizePack(pack, index) {
+  const files = pack.resourceFiles || pack.stickers || []
+  const shareUrl = pack.shareUrl || null
+  return {
+    number: index + 1,
+    name: pack.name || null,
+    author: pack.authorName || pack.user?.displayName || pack.user?.name || null,
+    stickerCount: files.length || pack.stickerCount || null,
+    shareUrl,
+    cover: files[0]?.fileName && pack.resourceUrlPrefix ? pack.resourceUrlPrefix + files[0].fileName : null,
+    isAnimated: Boolean(pack.isAnimated || pack.animated)
   }
 }
 
-async function fetchStickerly(url, options = {}) {
-  let lastError = null
+async function requestStickerly(url, options = {}) {
+  let lastError
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const response = await fetch(url, { ...options, signal: AbortSignal.timeout(25000) })
-      const parsed = await readUpstream(response)
-      if (parsed.ok) return { response, json: parsed.json, parseError: null }
-      lastError = { response, parseError: parsed.detail }
+      const response = await axios({
+        url,
+        method: options.method || 'GET',
+        headers: HEADERS,
+        data: options.data,
+        timeout: 25000,
+        validateStatus: () => true,
+        responseType: 'json'
+      })
+      if (response.data && typeof response.data === 'object') return response
+      lastError = new Error(`Respons Sticker.ly kosong atau bukan JSON (HTTP ${response.status}).`)
     } catch (error) {
-      lastError = { response: null, parseError: error?.name === 'TimeoutError' ? 'Request ke Sticker.ly timeout.' : error.message }
+      lastError = error
     }
   }
-  return { response: lastError?.response || null, json: null, parseError: lastError?.parseError || 'Sticker.ly tidak memberikan respons yang valid.' }
-}
-
-function normalizePack(pack) {
-  const code = pack.shareCode || getCode(pack.shareUrl || pack.url || '')
-  return {
-    name: pack.name || null,
-    author: pack.user?.displayName || pack.user?.name || pack.authorName || null,
-    total: pack.stickerCount ?? pack.stickers?.length ?? null,
-    shareCode: code,
-    url: code ? `https://sticker.ly/s/${code}` : pack.shareUrl || pack.url || null,
-    cover: pack.resourceUrlPrefix && pack.stickers?.[0]?.fileName ? pack.resourceUrlPrefix + pack.stickers[0].fileName : pack.cover || pack.thumbnail || null
-  }
+  throw new Error(lastError?.message || 'Sticker.ly tidak memberikan respons yang valid.')
 }
 
 export default async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) {
     res.setHeader('Allow', 'GET, POST')
-    return send(res, 405, { success: false, message: 'Gunakan method GET atau POST.' })
+    return send(res, 405, { success: false, creator: 'FuadXyro', message: 'Gunakan method GET atau POST.' })
   }
 
   let body = req.body || {}
@@ -78,34 +77,42 @@ export default async function handler(req, res) {
     const oddKey = Object.keys(params).find(key => key && !['q', 'keyword', 'search', 'url', 'link'].includes(key.toLowerCase()) && (params[key] === '' || params[key] == null))
     if (oddKey) directInput = oddKey.trim()
   }
-  const inputUrl = String(directInput || params.url || params.link || '').trim()
-  const keyword = String(directInput || params.q || params.keyword || params.search || '').trim()
-  const code = getCode(inputUrl)
+
+  const input = String(directInput || params.url || params.link || params.q || params.keyword || params.search || '').trim()
+  if (!input) return send(res, 400, {
+    success: false,
+    creator: 'FuadXyro',
+    message: 'Masukkan kata kunci atau URL pack langsung setelah ?=.',
+    examples: {
+      search: '/api/stickerly?=blue%20archive',
+      pack: '/api/stickerly?=https%3A%2F%2Fsticker.ly%2Fs%2FJ3ELW0'
+    }
+  })
 
   try {
+    const code = getCode(input)
     if (code) {
-      const upstream = await fetchStickerly(`${BASE_URL}/stickerPack/${encodeURIComponent(code)}?needRelation=true`, { headers: HEADERS })
-      if (!upstream.json) return send(res, 502, { success: false, creator: 'FuadXyro', message: 'Sticker.ly gagal mengembalikan data pack yang valid.', detail: upstream.parseError })
-      const response = upstream.response
-      const json = upstream.json
-      if (!response.ok) return send(res, response.status, { success: false, creator: 'FuadXyro', message: 'Sticker.ly gagal mengambil pack.', detail: json?.message || null })
+      const response = await requestStickerly(`${BASE_URL}/stickerPack/${encodeURIComponent(code)}?needRelation=true`)
+      const json = response.data
+      if (response.status < 200 || response.status >= 300) return send(res, 502, { success: false, creator: 'FuadXyro', message: 'Sticker.ly gagal mengambil pack.', detail: json?.message || `HTTP ${response.status}` })
       const pack = json?.result || {}
       const prefix = pack.resourceUrlPrefix || ''
-      const stickers = (pack.stickers || []).map((sticker, index) => ({
+      const files = pack.stickers || pack.resourceFiles || []
+      const stickers = files.map((sticker, index) => ({
         number: index + 1,
         fileName: sticker.fileName || null,
         url: sticker.fileName ? prefix + sticker.fileName : null,
         animated: Boolean(sticker.isAnimated || sticker.animated),
         tags: sticker.tags || []
       }))
-      if (!stickers.length) return send(res, 404, { success: false, message: 'Pack tidak ditemukan atau tidak memiliki stiker.' })
+      if (!stickers.length) return send(res, 404, { success: false, creator: 'FuadXyro', message: 'Pack tidak ditemukan atau tidak memiliki stiker.' })
       return send(res, 200, {
         success: true,
         creator: 'FuadXyro',
         mode: 'pack',
         pack: {
           name: pack.name || null,
-          author: pack.user?.displayName || pack.user?.name || pack.authorName || null,
+          author: pack.authorName || pack.user?.displayName || pack.user?.name || null,
           url: `https://sticker.ly/s/${code}`,
           total: stickers.length,
           cover: stickers[0]?.url || null
@@ -114,30 +121,39 @@ export default async function handler(req, res) {
       })
     }
 
-    if (!keyword) return send(res, 400, {
-      success: false,
-      message: 'Input ?= tidak terbaca. Coba /api/stickerly?=naruto atau /api/stickerly?q=naruto.',
-      examples: {
-        search: '/api/stickerly?=naruto',
-        fallbackSearch: '/api/stickerly?q=naruto',
-        pack: '/api/stickerly?=https%3A%2F%2Fsticker.ly%2Fs%2FJ3ELW0'
+    const response = await requestStickerly(`${BASE_URL}/stickerPack/smartSearch`, {
+      method: 'POST',
+      data: {
+        keyword: input,
+        enabledKeywordSearch: true,
+        filter: {
+          extendSearchResult: false,
+          sortBy: 'RECOMMENDED',
+          languages: ['ALL'],
+          minStickerCount: 5,
+          searchBy: 'ALL',
+          stickerType: 'ALL'
+        }
       }
     })
-
-    const upstream = await fetchStickerly(`${BASE_URL}/stickerPack/smartSearch`, {
-      method: 'POST',
-      headers: HEADERS,
-      body: JSON.stringify({ keyword, cursor: 0, page: 1, limit: 20, searchType: 'ALL' })
-    })
-    if (!upstream.json) return send(res, 502, { success: false, creator: 'FuadXyro', message: 'Pencarian Sticker.ly gagal mengembalikan data yang valid.', detail: upstream.parseError })
-    const response = upstream.response
-    const json = upstream.json
-    if (!response.ok) return send(res, response.status, { success: false, creator: 'FuadXyro', message: 'Pencarian Sticker.ly gagal.', detail: json?.message || null })
-    const result = json?.result
-    const packs = Array.isArray(result) ? result : result?.packs || result?.stickerPacks || result?.data || result?.items || []
+    const json = response.data
+    if (response.status < 200 || response.status >= 300) return send(res, 502, { success: false, creator: 'FuadXyro', message: 'Pencarian Sticker.ly gagal.', detail: json?.message || `HTTP ${response.status}` })
+    const packs = json?.result?.stickerPacks || []
     const results = packs.map(normalizePack)
-    return send(res, 200, { success: true, creator: 'FuadXyro', mode: 'search', keyword, total: results.length, results })
+    return send(res, 200, {
+      success: true,
+      creator: 'FuadXyro',
+      mode: 'search',
+      keyword: input,
+      total: results.length,
+      results
+    })
   } catch (error) {
-    return send(res, 500, { success: false, creator: 'FuadXyro', message: 'Terjadi kesalahan saat menghubungi Sticker.ly.', detail: error?.name === 'TimeoutError' ? 'Request timeout.' : error.message })
+    return send(res, 502, {
+      success: false,
+      creator: 'FuadXyro',
+      message: 'Terjadi kesalahan saat menghubungi Sticker.ly.',
+      detail: error?.message || 'Request gagal.'
+    })
   }
 }
