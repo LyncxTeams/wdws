@@ -128,47 +128,94 @@ Ambil pack dari tautan Sticker.ly (URL di-encode agar aman):
 Endpoint juga tetap mendukung parameter `q`, `keyword`, `url`, dan `link` untuk kompatibilitas. Respons berbentuk JSON berisi metadata pack dan URL tiap stiker.
 
 
-## Text-to-Speech (TTS)
+## Text-to-Speech Anime Jepang (TTS)
 
-Mengubah teks menjadi audio MP3 menggunakan Microsoft Edge TTS melalui package `@andresaya/edge-tts`. Tidak memerlukan API key.
+Endpoint ini meneruskan permintaan ke server KokoroTTS yang dijalankan sendiri. Output berupa MP3. Default voice `jf_alpha` (perempuan Jepang); tersedia juga `jf_gongitsune`, `jf_nezumi`, dan `jf_tebukuro`. Voice Jepang cocok untuk teks bahasa Jepang; teks Indonesia dapat terdengar tidak natural.
+
+### Menjalankan server KokoroTTS di VPS
+
+Pasang Docker, lalu jalankan image CPU (GPU tidak wajib, tetapi CPU bisa lebih lambat):
+
+```bash
+docker run -d --name kokorotts --restart unless-stopped \
+  -p 7860:7860 \
+  -v kokorotts_data:/app/persistent \
+  hangrylabs/kokorotts:latest
+```
+
+Jangan membuka port ini ke internet tanpa pembatasan akses. Tempatkan di belakang reverse proxy HTTPS/firewall. Simpan URL server dan token sebagai Environment Variables Vercel:
+
+- `KOKORO_URL` — URL dasar server KokoroTTS, contoh `https://tts.domain-kamu.com` (tanpa slash terakhir).
+- `KOKORO_API_KEY` — opsional. Isi hanya jika `KOKOROTTS_API_KEY` juga diaktifkan pada container. Tanpa keduanya, tidak perlu API key.
 
 ### GET
 
 ```text
-/api/tts?text=Halo%20semuanya
+/api/tts?text=こんにちは%20みんな
 ```
 
-### GET dengan pengaturan suara
+### GET dengan voice dan pengaturan
 
 ```text
-/api/tts?text=Halo%20semuanya&pitch=%2B20Hz&rate=%2B5%25&volume=%2B10%25
+/api/tts?text=こんにちは&voice=jf_alpha&speed=1.08&pitch=2&tempo=1.04&volume=1
 ```
 
 ### POST JSON
 
 ```json
 {
-  "text": "Halo semuanya",
-  "pitch": "+20Hz",
-  "rate": "+5%",
-  "volume": "+10%"
+  "text": "こんにちは、みんな！",
+  "voice": "jf_alpha",
+  "speed": 1.08,
+  "pitch": 2,
+  "tempo": 1.04,
+  "volume": 1
 }
 ```
 
 - `text` — wajib, maksimal 500 karakter.
-- `pitch` — opsional, default `+20Hz`, rentang -100Hz sampai +100Hz.
-- `rate` — opsional, default `+5%`, rentang -100% sampai +200%.
-- `volume` — opsional, default `+10%`, rentang -100% sampai +100%.
-- Voice — `id-ID-GadisNeural`.
-- Output — MP3, 24 kHz, 96 kbit/s, mono.
-- Respons sukses berupa binary audio dengan content type `audio/mpeg`; jika gagal, respons JSON `{ status: false, creator, message }`.
+- `voice` — `jf_alpha`, `jf_gongitsune`, `jf_nezumi`, atau `jf_tebukuro`.
+- `speed` — 0.5 sampai 2; default 1.08.
+- `pitch` — -12 sampai 12 semitone; default 2.
+- `tempo` — 0.5 sampai 2; default 1.04.
+- `volume` — 0 sampai 2; default 1.
+- Output — MP3 (`audio/mpeg`). Jika gagal, endpoint mengembalikan JSON `{ "status": false, "creator": "FuadXyro", "message": "..." }`.
 
 ### Pemakaian dari Node.js
 
 ```js
-const response = await fetch('https://wdws.vercel.app/api/tts?text=' + encodeURIComponent(text))
+const response = await fetch(
+  'https://wdws.vercel.app/api/tts?text=' + encodeURIComponent('こんにちは、みんな！')
+)
 if (!response.ok) throw new Error(await response.text())
 const audio = Buffer.from(await response.arrayBuffer())
+
+await conn.sendMessage(m.chat, {
+  audio,
+  mimetype: 'audio/mpeg',
+  fileName: 'anime-voice.mp3'
+}, { quoted: m })
 ```
 
-Layanan Edge TTS memerlukan koneksi internet ke layanan Microsoft dan ketersediaannya mengikuti layanan upstream.
+Server KokoroTTS perlu berjalan terus di VPS. Vercel hanya menjadi endpoint relay; model tidak dijalankan di Vercel. Dokumentasi: https://github.com/hangry-labs/kokoroTTS
+
+## VOICEVOX Japanese TTS
+
+Endpoint khusus VOICEVOX Jepang. Route ini berdiri sendiri dan tidak mengubah endpoint Kokoro yang sudah ada di `/api/tts`.
+
+### GET
+
+```text
+/api/tts/jpn?text=こんにちは
+```
+
+Opsional, pilih speaker: `&speaker=0`. Teks maksimal 300 karakter. Output berhasil berupa MP3 (`audio/mpeg`). Jika provider masih memproses audio, endpoint dapat mengembalikan HTTP 202 beserta `mp3Url`.
+
+Contoh URL production:
+
+```text
+https://wdws.vercel.app/api/tts/jpn?text=こんにちは
+```
+
+Endpoint ini memakai provider publik `api.tts.quest`; ketersediaan dan kecepatan proses mengikuti layanan provider tersebut. Tidak memerlukan `KOKORO_URL` atau environment variable Kokoro.
+

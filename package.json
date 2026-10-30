@@ -9,7 +9,6 @@
     "axios": "^1.7.7",
     "sharp": "^0.33.5",
     "fake-ml": "^1.0.0",
-    "fake-ff": "^1.0.0",
-    "@andresaya/edge-tts": "^1.9.1"
+    "fake-ff": "^1.0.0"
   }
 }
