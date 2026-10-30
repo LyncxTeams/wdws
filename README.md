@@ -126,3 +126,49 @@ Ambil pack dari tautan Sticker.ly (URL di-encode agar aman):
 ```
 
 Endpoint juga tetap mendukung parameter `q`, `keyword`, `url`, dan `link` untuk kompatibilitas. Respons berbentuk JSON berisi metadata pack dan URL tiap stiker.
+
+
+## Text-to-Speech (TTS)
+
+Mengubah teks menjadi audio MP3 menggunakan Microsoft Edge TTS melalui package `@andresaya/edge-tts`. Tidak memerlukan API key.
+
+### GET
+
+```text
+/api/tts?text=Halo%20semuanya
+```
+
+### GET dengan pengaturan suara
+
+```text
+/api/tts?text=Halo%20semuanya&pitch=%2B20Hz&rate=%2B5%25&volume=%2B10%25
+```
+
+### POST JSON
+
+```json
+{
+  "text": "Halo semuanya",
+  "pitch": "+20Hz",
+  "rate": "+5%",
+  "volume": "+10%"
+}
+```
+
+- `text` — wajib, maksimal 500 karakter.
+- `pitch` — opsional, default `+20Hz`, rentang -100Hz sampai +100Hz.
+- `rate` — opsional, default `+5%`, rentang -100% sampai +200%.
+- `volume` — opsional, default `+10%`, rentang -100% sampai +100%.
+- Voice — `id-ID-GadisNeural`.
+- Output — MP3, 24 kHz, 96 kbit/s, mono.
+- Respons sukses berupa binary audio dengan content type `audio/mpeg`; jika gagal, respons JSON `{ status: false, creator, message }`.
+
+### Pemakaian dari Node.js
+
+```js
+const response = await fetch('https://wdws.vercel.app/api/tts?text=' + encodeURIComponent(text))
+if (!response.ok) throw new Error(await response.text())
+const audio = Buffer.from(await response.arrayBuffer())
+```
+
+Layanan Edge TTS memerlukan koneksi internet ke layanan Microsoft dan ketersediaannya mengikuti layanan upstream.
