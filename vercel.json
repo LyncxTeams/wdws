@@ -39,6 +39,10 @@
     "api/tts/jpn.js": {
       "memory": 1024,
       "maxDuration": 60
+    },
+    "api/instagram.js": {
+      "memory": 1024,
+      "maxDuration": 60
     }
   }
 }

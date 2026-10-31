@@ -219,3 +219,30 @@ https://wdws.vercel.app/api/tts/jpn?text=こんにちは
 
 Endpoint ini memakai provider publik `api.tts.quest`; ketersediaan dan kecepatan proses mengikuti layanan provider tersebut. Tidak memerlukan `KOKORO_URL` atau environment variable Kokoro.
 
+
+
+## Instagram Downloader API
+
+Mengambil media Instagram Reels, Post/Carousel, dan Story melalui beberapa provider fallback.
+
+### GET
+
+```text
+/api/instagram?url=https%3A%2F%2Fwww.instagram.com%2Freel%2FXXXXXXXX%2F
+```
+
+Story:
+
+```text
+/api/instagram?url=https%3A%2F%2Fwww.instagram.com%2Fstories%2Fusername%2F
+```
+
+### POST JSON
+
+```json
+{
+  "url": "https://www.instagram.com/p/XXXXXXXX/"
+}
+```
+
+Respons berhasil berbentuk JSON dengan `status`, `platform`, `url`, dan `result.media`. Setiap item media berisi `type`, `url`, dan nomor urut. Endpoint mencoba Watext, Fastvidl, lalu IGExport untuk Reels/Post. Story menggunakan IGExport. Ketersediaan provider mengikuti perubahan layanan pihak ketiga.
