@@ -1,10 +1,91 @@
 import axios from 'axios'
-import { wrapper } from 'axios-cookiejar-support'
-import { CookieJar } from 'tough-cookie'
 
 const CREATOR = 'Alvin'
-const jar = new CookieJar()
-const client = wrapper(axios.create({ jar, withCredentials: true, timeout: 30000 }))
+const cookieStore = new Map()
+
+function cookieHeader(url) {
+  const target = new URL(url)
+  const now = Date.now()
+  const values = []
+  for (const [key, item] of cookieStore) {
+    if (item.expires && item.expires <= now) {
+      cookieStore.delete(key)
+      continue
+    }
+    const domainMatch = target.hostname === item.domain || target.hostname.endsWith(`.${item.domain}`)
+    const pathMatch = target.pathname.startsWith(item.path)
+    if (domainMatch && pathMatch && (!item.secure || target.protocol === 'https:')) {
+      values.push(`${item.name}=${item.value}`)
+    }
+  }
+  return values.join('; ')
+}
+
+function saveCookies(url, headers = {}) {
+  const target = new URL(url)
+  const cookies = headers['set-cookie'] || []
+  for (const raw of cookies) {
+    const parts = String(raw).split(';').map(value => value.trim())
+    const pair = parts.shift()
+    const separator = pair.indexOf('=')
+    if (separator <= 0) continue
+    const name = pair.slice(0, separator)
+    const value = pair.slice(separator + 1)
+    const options = Object.fromEntries(parts.map(part => {
+      const index = part.indexOf('=')
+      return index < 0
+        ? [part.toLowerCase(), true]
+        : [part.slice(0, index).toLowerCase(), part.slice(index + 1)]
+    }))
+    const domain = String(options.domain || target.hostname).replace(/^\\./, '').toLowerCase()
+    if (!(target.hostname === domain || target.hostname.endsWith(`.${domain}`))) continue
+    const path = options.path || '/'
+    const key = `${domain}|${path}|${name}`
+    if (options['max-age'] === '0' || options['max-age'] === '-1') {
+      cookieStore.delete(key)
+      continue
+    }
+    let expires = 0
+    if (options.expires) {
+      const parsed = Date.parse(options.expires)
+      if (Number.isFinite(parsed)) expires = parsed
+    }
+    if (options['max-age'] && Number.isFinite(Number(options['max-age']))) {
+      expires = Date.now() + Number(options['max-age']) * 1000
+    }
+    cookieStore.set(key, {
+      name,
+      value,
+      domain,
+      path,
+      secure: Boolean(options.secure),
+      expires
+    })
+  }
+}
+
+async function cookieRequest(method, url, data, config = {}) {
+  const headers = { ...(config.headers || {}) }
+  const cookie = cookieHeader(url)
+  if (cookie) headers.Cookie = cookie
+  try {
+    const response = await axios({ ...config, method, url, data, headers, timeout: config.timeout || 30000 })
+    saveCookies(response.config.url || url, response.headers)
+    return response
+  } catch (error) {
+    if (error.response) saveCookies(error.response.config?.url || url, error.response.headers)
+    throw error
+  }
+}
+
+const client = {
+  get(url, config = {}) {
+    return cookieRequest('GET', url, undefined, config)
+  },
+  post(url, data, config = {}) {
+    return cookieRequest('POST', url, data, config)
+  }
+}
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
 const HEADERS = { 'User-Agent': UA, Accept: '*/*' }
 
