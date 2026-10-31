@@ -1,6 +1,10 @@
 import axios from 'axios'
+import { wrapper } from 'axios-cookiejar-support'
+import { CookieJar } from 'tough-cookie'
 
 const CREATOR = 'Alvin'
+const jar = new CookieJar()
+const client = wrapper(axios.create({ jar, withCredentials: true, timeout: 30000 }))
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
 const HEADERS = { 'User-Agent': UA, Accept: '*/*' }
 
@@ -48,14 +52,14 @@ function normalizeMedia(items = []) {
 }
 
 async function requestV1(url) {
-  const config = await axios.get('https://watext.me/instagram-video-downloder/js/config.js', {
+  const config = await client.get('https://watext.me/instagram-video-downloder/js/config.js', {
     headers: { ...HEADERS, Origin: 'https://watext.me', Referer: 'https://watext.me/' },
     timeout: 18000
   })
   const match = String(config.data || '').match(/apiUrl\s*:\s*['"]([^'"]+)['"]/)
   if (!match) throw new Error('Endpoint server pertama tidak ditemukan.')
   const api = new URL(match[1])
-  const response = await axios.post(`${api.origin}/fetch`, { url }, {
+  const response = await client.post(`${api.origin}/fetch`, { url }, {
     headers: {
       ...HEADERS,
       'Content-Type': 'application/json',
@@ -84,11 +88,11 @@ async function requestV1(url) {
 }
 
 async function requestV2(url) {
-  await axios.get('https://fastvidl.com/instagram-video-downloader-free', {
+  await client.get('https://fastvidl.com/instagram-video-downloader-free', {
     headers: HEADERS,
     timeout: 18000
   })
-  const response = await axios.post('https://fastvidl.com/api/lookup', { url }, {
+  const response = await client.post('https://fastvidl.com/api/lookup', { url }, {
     headers: {
       ...HEADERS,
       'Content-Type': 'application/json',
@@ -113,7 +117,7 @@ async function requestV2(url) {
 
 async function requestV3(url, type) {
   const endpoint = type === 'reel' || type === 'video' ? 'ig-reels' : 'ig-photo'
-  const response = await axios.get(`https://igexport.com/api/${endpoint}/`, {
+  const response = await client.get(`https://igexport.com/api/${endpoint}/`, {
     params: { url },
     headers: HEADERS,
     timeout: 25000
@@ -133,7 +137,7 @@ async function requestV3(url, type) {
 }
 
 async function requestStory(username) {
-  const response = await axios.get('https://igexport.com/api/ig-stories/', {
+  const response = await client.get('https://igexport.com/api/ig-stories/', {
     params: { username },
     headers: HEADERS,
     timeout: 25000
